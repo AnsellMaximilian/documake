@@ -1,0 +1,18 @@
+const object = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
+const id = { type: "string", format: "uuid" };
+const filters = { type: "array", maxItems: 10, items: object({ fieldKey: { type: "string" }, operator: { type: "string", enum: ["equals", "notEquals", "contains", "isEmpty"] }, value: {} }, ["fieldKey", "operator"]) };
+
+export const toolDefinitions = [
+  { name: "list_collections", description: "List collections in the authenticated workspace with record counts.", inputSchema: object({}), readOnly: true },
+  { name: "get_collection_schema", description: "Get one authorized collection and its ordered field definitions.", inputSchema: object({ collectionId: id }, ["collectionId"]), readOnly: true },
+  { name: "create_collection", description: "Create a generic collection in the authenticated workspace.", inputSchema: object({ name: { type: "string", minLength: 1, maxLength: 80 }, description: { type: "string", maxLength: 500 } }, ["name"]) },
+  { name: "add_field", description: "Add a validated field to an authorized collection. Relation config requires targetCollectionId; select config requires options; money config requires currency.", inputSchema: object({ collectionId: id, key: { type: "string", pattern: "^[a-z][a-z0-9_]*$" }, label: { type: "string", minLength: 1 }, type: { type: "string", enum: ["text", "number", "money", "date", "boolean", "select", "relation"] }, required: { type: "boolean" }, config: { type: "object" } }, ["collectionId", "key", "label", "type", "required"]) },
+  { name: "search_records", description: "Search compact records in one authorized collection with a small structured filter set.", inputSchema: object({ collectionId: id, query: { type: "string", maxLength: 200 }, filters, limit: { type: "integer", minimum: 1, maximum: 100 } }, ["collectionId"]), readOnly: true },
+  { name: "get_record", description: "Get one authorized record with fields, related records, and safe source-document metadata.", inputSchema: object({ recordId: id }, ["recordId"]), readOnly: true },
+  { name: "create_record_draft", description: "Create a validated draft record and optionally attach authorized source documents.", inputSchema: object({ collectionId: id, values: { type: "object" }, sourceDocumentIds: { type: "array", maxItems: 20, items: id } }, ["collectionId", "values"]) },
+  { name: "update_record_draft", description: "Merge values into an existing draft record. Confirmed records are rejected.", inputSchema: object({ recordId: id, values: { type: "object" }, sourceDocumentIds: { type: "array", maxItems: 20, items: id } }, ["recordId", "values"]) },
+  { name: "confirm_record", description: "Validate all required values and change an authorized draft record to confirmed.", inputSchema: object({ recordId: id }, ["recordId"]) },
+  { name: "aggregate_records", description: "Compute a server-side count, sum, average, minimum, or maximum over confirmed records.", inputSchema: object({ collectionId: id, operation: { type: "string", enum: ["count", "sum", "average", "min", "max"] }, fieldKey: { type: "string" }, filters }, ["collectionId", "operation"]), readOnly: true },
+  { name: "list_documents", description: "List safe source-document metadata in the authenticated workspace.", inputSchema: object({ limit: { type: "integer", minimum: 1, maximum: 100 }, unlinkedOnly: { type: "boolean" } }), readOnly: true },
+  { name: "get_document", description: "Get safe document metadata and the in-app page path where the source can be visually inspected.", inputSchema: object({ documentId: id }, ["documentId"]), readOnly: true },
+] as const;
