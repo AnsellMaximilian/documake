@@ -1,25 +1,150 @@
 "use client";
+
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, FileText, Save, Trash2 } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ArrowLeft, CheckCircle2, ChevronRight, FileText, Plus, Save, Trash2 } from "lucide-react";
 import { clientApi } from "@/lib/client-api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+
 type Field = { id: string; key: string; label: string; type: string; required: boolean; config: Record<string, unknown> };
-type RecordDetailData = { id: string; status: "draft" | "confirmed"; values: Record<string, unknown>; collection: { id: string; name: string }; fields: Field[]; documents: { id: string; originalFilename: string; mimeType: string }[]; relatedRecords: { fieldId: string; record?: { id: string; values: Record<string, unknown> } }[] };
-type CompactRecord = { id: string; values: Record<string, unknown> };
+type CompactRecord = { id: string; status?: "draft" | "confirmed"; values: Record<string, unknown> };
+type RelatedSummary = {
+  fieldKey: string;
+  label: string;
+  type: string;
+  config: Record<string, unknown>;
+  working: { sum: number; average: number | null; valueCount: number };
+  confirmed: { sum: number; average: number | null; valueCount: number };
+};
+type IncomingRelation = {
+  field: { id: string; key: string; label: string };
+  collection: { id: string; name: string };
+  fields: Field[];
+  records: (CompactRecord & { status: "draft" | "confirmed" })[];
+  totalCount: number;
+  confirmedCount: number;
+  summaries: RelatedSummary[];
+};
+type RecordDetailData = {
+  id: string;
+  status: "draft" | "confirmed";
+  values: Record<string, unknown>;
+  collection: { id: string; name: string };
+  fields: Field[];
+  documents: { id: string; originalFilename: string; mimeType: string }[];
+  relatedRecords: { fieldId: string; record?: CompactRecord }[];
+  incomingRelations: IncomingRelation[];
+};
 type SourceDocument = { id: string; originalFilename: string };
+
+function recordLabel(record: CompactRecord | undefined) {
+  return String(Object.values(record?.values ?? {}).find((value) => typeof value === "string") ?? record?.id ?? "Related record");
+}
+
+function formatValue(field: Pick<Field, "type" | "config">, value: unknown) {
+  if (value === undefined || value === null || value === "") return "—";
+  if (field.type === "boolean") return value ? "Yes" : "No";
+  if (field.type === "date" && typeof value === "string") return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(`${value}T00:00:00`));
+  if (field.type === "money" && typeof value === "number") return new Intl.NumberFormat(undefined, { style: "currency", currency: String(field.config.currency ?? "USD"), maximumFractionDigits: 2 }).format(value);
+  return String(value);
+}
+
 export function RecordDetail({ recordId }: { recordId: string }) {
   const router = useRouter();
-  const [record, setRecord] = useState<RecordDetailData | null>(null); const [values, setValues] = useState<Record<string, unknown>>({}); const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [allDocuments, setAllDocuments] = useState<SourceDocument[]>([]); const [sourceDocumentIds, setSourceDocumentIds] = useState<string[]>([]); const [relationOptions, setRelationOptions] = useState<Record<string, CompactRecord[]>>({});
-  const load = useCallback(async () => { try { const [data, docs] = await Promise.all([clientApi<RecordDetailData>(`/api/records/${recordId}`), clientApi<SourceDocument[]>("/api/documents?limit=100")]); setRecord(data); setValues(data.values); setAllDocuments(docs); setSourceDocumentIds(data.documents.map((doc) => doc.id)); const pairs = await Promise.all(data.fields.filter((field) => field.type === "relation").map(async (field) => [field.id, await clientApi<CompactRecord[]>(`/api/records?collectionId=${field.config.targetCollectionId}&limit=100`)] as const)); setRelationOptions(Object.fromEntries(pairs)); } catch (e) { setError(e instanceof Error ? e.message : "Could not load record."); } }, [recordId]); useEffect(() => { const timer = window.setTimeout(load, 0); return () => window.clearTimeout(timer); }, [load]);
-  async function save(event: FormEvent) { event.preventDefault(); setBusy(true); setError(""); try { await clientApi(`/api/records/${recordId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ values, sourceDocumentIds }) }); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Could not save record."); } finally { setBusy(false); } }
-  async function confirmRecord() { setBusy(true); try { await clientApi(`/api/records/${recordId}/confirm`, { method: "POST" }); await load(); } catch (e) { setError(e instanceof Error ? e.message : "Could not confirm record."); } finally { setBusy(false); } }
-  async function remove() { if (!record || !confirm("Delete this record? Relations and document links will also be removed.")) return; await clientApi(`/api/records/${recordId}`, { method: "DELETE" }); router.push(`/collections/${record.collection.id}`); router.refresh(); }
+  const [record, setRecord] = useState<RecordDetailData | null>(null);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [allDocuments, setAllDocuments] = useState<SourceDocument[]>([]);
+  const [sourceDocumentIds, setSourceDocumentIds] = useState<string[]>([]);
+  const [relationOptions, setRelationOptions] = useState<Record<string, CompactRecord[]>>({});
+
+  const load = useCallback(async () => {
+    try {
+      const [data, docs] = await Promise.all([
+        clientApi<RecordDetailData>(`/api/records/${recordId}`),
+        clientApi<SourceDocument[]>("/api/documents?limit=100"),
+      ]);
+      setRecord(data);
+      setValues(data.values);
+      setAllDocuments(docs);
+      setSourceDocumentIds(data.documents.map((doc) => doc.id));
+      const pairs = await Promise.all(data.fields.filter((field) => field.type === "relation").map(async (field) => [field.id, await clientApi<CompactRecord[]>(`/api/records?collectionId=${field.config.targetCollectionId}&limit=100`)] as const));
+      setRelationOptions(Object.fromEntries(pairs));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load record.");
+    }
+  }, [recordId]);
+
+  useEffect(() => { const timer = window.setTimeout(load, 0); return () => window.clearTimeout(timer); }, [load]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError("");
+    try {
+      await clientApi(`/api/records/${recordId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ values, sourceDocumentIds }) });
+      await load();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save record."); }
+    finally { setBusy(false); }
+  }
+
+  async function confirmRecord() {
+    setBusy(true); setError("");
+    try { await clientApi(`/api/records/${recordId}/confirm`, { method: "POST" }); await load(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not confirm record."); }
+    finally { setBusy(false); }
+  }
+
+  async function remove() {
+    if (!record || !confirm("Delete this record? Relations and document links will also be removed.")) return;
+    await clientApi(`/api/records/${recordId}`, { method: "DELETE" });
+    router.push(`/collections/${record.collection.id}`); router.refresh();
+  }
+
   if (!record) return <Card className="p-6 text-sm text-muted">{error || "Loading record…"}</Card>;
-  return <div><Link href={`/collections/${record.collection.id}`} className="inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground"><ArrowLeft className="size-4" />Back to {record.collection.name}</Link><div className="mt-5 flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-medium text-accent">{record.collection.name}</p><div className="mt-1 flex items-center gap-3"><h1 className="text-2xl font-semibold tracking-tight">Record detail</h1><span className={`rounded-full px-2 py-1 text-xs font-medium ${record.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-accent-soft text-accent-strong"}`}>{record.status}</span></div></div><div className="flex gap-2">{record.status === "draft" && <Button variant="secondary" onClick={confirmRecord} disabled={busy}><CheckCircle2 className="size-4" />Confirm</Button>}<Button variant="ghost" onClick={remove}><Trash2 className="size-4" />Delete</Button></div></div>{error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-    <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]"><Card className="p-6"><h2 className="font-semibold">Field values</h2><form onSubmit={save} className="mt-5 grid gap-4 sm:grid-cols-2">{record.fields.map((field) => <RecordInput key={field.id} field={field} value={values[field.key]} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} options={relationOptions[field.id] ?? []} />)}<div className="sm:col-span-2"><Button disabled={busy}><Save className="size-4" />Save changes</Button></div></form></Card><div className="space-y-5"><Card className="p-5"><h2 className="font-semibold">Source evidence</h2>{record.documents.length ? <div className="mt-3 space-y-2">{record.documents.map((doc) => <Link key={doc.id} href={`/documents/${doc.id}`} className="flex items-center gap-3 rounded-lg border p-3 text-sm hover:bg-surface-muted"><FileText className="size-4 text-accent" /><span className="min-w-0 flex-1 truncate">{doc.originalFilename}</span></Link>)}</div> : <p className="mt-2 text-sm leading-6 text-muted">No source documents are attached to this record.</p>}{allDocuments.length > 0 && <label className="mt-4 block text-xs font-medium text-muted">Attached documents<select multiple value={sourceDocumentIds} onChange={(event) => setSourceDocumentIds(Array.from(event.target.selectedOptions, (option) => option.value))} className="mt-1.5 min-h-24 w-full rounded-lg border bg-white p-2 text-sm font-normal text-foreground">{allDocuments.map((doc) => <option key={doc.id} value={doc.id}>{doc.originalFilename}</option>)}</select><span className="mt-1 block font-normal">Save changes to apply attachments.</span></label>}</Card><Card className="p-5"><h2 className="font-semibold">Relations</h2>{record.relatedRecords.length ? <div className="mt-3 space-y-2">{record.relatedRecords.map((relation) => <Link key={relation.fieldId} href={`/records/${relation.record?.id}`} className="block rounded-lg border p-3 text-sm hover:bg-surface-muted">{String(Object.values(relation.record?.values ?? {}).find((value) => typeof value === "string") ?? relation.record?.id)}</Link>)}</div> : <p className="mt-2 text-sm text-muted">No related records.</p>}</Card></div></div>
+
+  return <div>
+    <Link href={`/collections/${record.collection.id}`} className="inline-flex items-center gap-2 text-sm font-medium text-muted hover:text-foreground"><ArrowLeft className="size-4" />Back to {record.collection.name}</Link>
+    <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
+      <div><p className="text-sm font-medium text-accent">{record.collection.name}</p><div className="mt-1 flex items-center gap-3"><h1 className="text-2xl font-semibold tracking-tight">Record detail</h1><span className={`rounded-full px-2 py-1 text-xs font-medium ${record.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-accent-soft text-accent-strong"}`}>{record.status}</span></div></div>
+      <div className="flex gap-2">{record.status === "draft" && <Button variant="secondary" onClick={confirmRecord} disabled={busy}><CheckCircle2 className="size-4" />Confirm</Button>}<Button variant="ghost" onClick={remove}><Trash2 className="size-4" />Delete</Button></div>
+    </div>
+    {error && <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+    <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
+      <Card className="p-6"><h2 className="font-semibold">Field values</h2><form onSubmit={save} className="mt-5 grid gap-4 sm:grid-cols-2">{record.fields.map((field) => <RecordInput key={field.id} field={field} value={values[field.key]} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} options={relationOptions[field.id] ?? []} />)}<div className="sm:col-span-2"><Button disabled={busy}><Save className="size-4" />Save changes</Button></div></form></Card>
+      <div className="space-y-5">
+        <Card className="p-5"><h2 className="font-semibold">Source evidence</h2>{record.documents.length ? <div className="mt-3 space-y-2">{record.documents.map((doc) => <Link key={doc.id} href={`/documents/${doc.id}`} className="flex items-center gap-3 rounded-lg border p-3 text-sm hover:bg-surface-muted"><FileText className="size-4 text-accent" /><span className="min-w-0 flex-1 truncate">{doc.originalFilename}</span></Link>)}</div> : <p className="mt-2 text-sm leading-6 text-muted">No source documents are attached to this record.</p>}{allDocuments.length > 0 && <label className="mt-4 block text-xs font-medium text-muted">Attached documents<select multiple value={sourceDocumentIds} onChange={(event) => setSourceDocumentIds(Array.from(event.target.selectedOptions, (option) => option.value))} className="mt-1.5 min-h-24 w-full rounded-lg border bg-white p-2 text-sm font-normal text-foreground">{allDocuments.map((doc) => <option key={doc.id} value={doc.id}>{doc.originalFilename}</option>)}</select><span className="mt-1 block font-normal">Save changes to apply attachments.</span></label>}</Card>
+        <Card className="p-5"><h2 className="font-semibold">Links from this record</h2>{record.relatedRecords.length ? <div className="mt-3 space-y-2">{record.relatedRecords.map((relation) => <Link key={relation.fieldId} href={`/records/${relation.record?.id}`} className="block rounded-lg border p-3 text-sm hover:bg-surface-muted">{recordLabel(relation.record)}</Link>)}</div> : <p className="mt-2 text-sm text-muted">No outgoing links.</p>}</Card>
+      </div>
+    </div>
+    <IncomingRelations groups={record.incomingRelations} recordId={record.id} />
   </div>;
 }
-function RecordInput({ field, value, onChange, options }: { field: Field; value: unknown; onChange(value: unknown): void; options: CompactRecord[] }) { const classes = "mt-1.5 h-10 w-full rounded-lg border bg-white px-3 font-normal"; if (field.type === "boolean") return <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium"><input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} className="size-4 accent-[var(--accent)]" />{field.label}</label>; if (field.type === "select") return <label className="text-sm font-medium">{field.label}<select value={String(value ?? "")} onChange={(e) => onChange(e.target.value || null)} className={classes}><option value="">Choose…</option>{(field.config.options as string[] ?? []).map((option) => <option key={option}>{option}</option>)}</select></label>; if (field.type === "relation") return <label className="text-sm font-medium">{field.label}<select required={field.required} value={String(value ?? "")} onChange={(e) => onChange(e.target.value || null)} className={classes}><option value="">Choose related record…</option>{options.map((option) => <option key={option.id} value={option.id}>{String(Object.values(option.values).find((item) => typeof item === "string") ?? option.id)}</option>)}</select></label>; return <label className="text-sm font-medium">{field.label}{field.required && " *"}<input required={field.required} type={field.type === "date" ? "date" : field.type === "number" || field.type === "money" ? "number" : "text"} step={field.type === "number" || field.type === "money" ? "any" : undefined} value={String(value ?? "")} onChange={(e) => onChange(field.type === "number" || field.type === "money" ? (e.target.value === "" ? null : Number(e.target.value)) : (e.target.value || null))} className={classes} /></label>; }
+
+function IncomingRelations({ groups, recordId }: { groups: IncomingRelation[]; recordId: string }) {
+  if (!groups.length) return null;
+  return <section className="mt-8 space-y-5">
+    <div><p className="text-sm font-medium text-accent">Related records</p><h2 className="mt-1 text-xl font-semibold tracking-tight">Records that link here</h2></div>
+    {groups.map((group) => {
+      const visibleFields = group.fields.filter((field) => field.id !== group.field.id);
+      const query = new URLSearchParams({ relatedField: group.field.key, relatedRecord: recordId, returnRecord: recordId });
+      return <Card key={group.field.id} className="overflow-hidden">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b px-5 py-4">
+          <div><h3 className="font-semibold">{group.collection.name}</h3><p className="mt-1 text-xs text-muted">{group.totalCount} linked via {group.field.label} · {group.confirmedCount} confirmed</p></div>
+          <Link href={`/collections/${group.collection.id}?${query.toString()}`} className="inline-flex h-8 items-center justify-center gap-2 rounded-lg bg-accent px-3 text-sm font-medium text-white hover:bg-accent-strong"><Plus className="size-4" />Add related record</Link>
+        </div>
+        {group.summaries.length > 0 && <div className="flex flex-wrap gap-3 border-b bg-surface-muted/40 px-5 py-4">{group.summaries.map((summary) => <div key={summary.fieldKey} className="rounded-lg border bg-surface px-3 py-2"><p className="text-xs font-medium text-muted">{summary.label}</p><p className="mt-1 text-sm font-semibold">Working sum {formatValue(summary, summary.working.sum)}</p>{group.confirmedCount !== group.totalCount && <p className="mt-0.5 text-xs text-muted">Confirmed sum {formatValue(summary, summary.confirmed.sum)}</p>}</div>)}</div>}
+        <div className="overflow-x-auto"><table className="w-full min-w-2xl text-left text-sm"><thead className="bg-surface-muted text-xs text-muted"><tr>{visibleFields.map((field) => <th key={field.id} className="px-4 py-3 font-medium">{field.label}</th>)}<th className="px-4 py-3 font-medium">Status</th><th /></tr></thead><tbody className="divide-y">{group.records.map((item) => <tr key={item.id} className="hover:bg-surface-muted/60">{visibleFields.map((field) => <td key={field.id} className="max-w-64 truncate px-4 py-3">{formatValue(field, item.values[field.key])}</td>)}<td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium ${item.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-accent-soft text-accent-strong"}`}>{item.status}</span></td><td className="px-4 py-3"><Link href={`/records/${item.id}`} aria-label="Open related record"><ChevronRight className="size-4 text-muted" /></Link></td></tr>)}</tbody></table></div>
+      </Card>;
+    })}
+  </section>;
+}
+
+function RecordInput({ field, value, onChange, options }: { field: Field; value: unknown; onChange(value: unknown): void; options: CompactRecord[] }) {
+  const classes = "mt-1.5 h-10 w-full rounded-lg border bg-white px-3 font-normal";
+  if (field.type === "boolean") return <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium"><input type="checkbox" checked={Boolean(value)} onChange={(event) => onChange(event.target.checked)} className="size-4 accent-[var(--accent)]" />{field.label}</label>;
+  if (field.type === "select") return <label className="text-sm font-medium">{field.label}<select value={String(value ?? "")} onChange={(event) => onChange(event.target.value || null)} className={classes}><option value="">Choose…</option>{(field.config.options as string[] ?? []).map((option) => <option key={option}>{option}</option>)}</select></label>;
+  if (field.type === "relation") return <label className="text-sm font-medium">{field.label}<select required={field.required} value={String(value ?? "")} onChange={(event) => onChange(event.target.value || null)} className={classes}><option value="">Choose related record…</option>{options.map((option) => <option key={option.id} value={option.id}>{recordLabel(option)}</option>)}</select></label>;
+  return <label className="text-sm font-medium">{field.label}{field.required && " *"}<input required={field.required} type={field.type === "date" ? "date" : field.type === "number" || field.type === "money" ? "number" : "text"} step={field.type === "number" || field.type === "money" ? "any" : undefined} value={String(value ?? "")} onChange={(event) => onChange(field.type === "number" || field.type === "money" ? (event.target.value === "" ? null : Number(event.target.value)) : (event.target.value || null))} className={classes} /></label>;
+}
