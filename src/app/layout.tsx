@@ -12,14 +12,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
-  const content = <body className="min-h-full bg-background text-foreground">{children}</body>;
 
   return (
     <html
       lang="en"
       className="h-full antialiased"
     >
-      {clerkConfigured ? <ClerkProvider>{content}</ClerkProvider> : content}
+      <body className="min-h-full bg-background text-foreground">
+        {clerkConfigured ? <ClerkProvider>{children}</ClerkProvider> : children}
+      </body>
     </html>
   );
 }

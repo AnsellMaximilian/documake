@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Database, FileStack, Home, Layers3 } from "lucide-react";
-import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { AuthControls } from "@/components/auth-controls";
 import { WebMcpTools } from "@/lib/webmcp/webmcp-tools";
 
 const navigation = [
@@ -24,7 +24,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <p className="text-xs font-medium text-foreground">Human-first, agent-ready</p>
         <p className="mt-1 text-xs leading-5 text-muted">Everything here works manually. WebMCP adds a faster interface for your browser agent.</p>
       </div>
-      {clerkConfigured && <div className="mt-5 hidden border-t pt-4 lg:block"><SignedIn><div className="flex items-center gap-3 px-2"><UserButton /><span className="text-xs font-medium text-muted">Workspace account</span></div></SignedIn><SignedOut><SignInButton mode="modal"><button className="w-full rounded-lg bg-accent px-3 py-2 text-sm font-medium text-white">Sign in to continue</button></SignInButton></SignedOut></div>}
+      {clerkConfigured && <div className="mt-4 border-t pt-4 lg:mt-5"><AuthControls /></div>}
     </aside>
     <main className="min-w-0">{children}</main>
   </div>;
