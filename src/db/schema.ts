@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { boolean, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const memberRole = pgEnum("member_role", ["owner", "member"]);
 export const fieldType = pgEnum("field_type", ["text", "number", "money", "date", "boolean", "select", "relation"]);
@@ -21,7 +21,11 @@ export const records = pgTable("records", {
 });
 export const recordRelations = pgTable("record_relations", {
   id: uuid("id").defaultRandom().primaryKey(), fieldId: uuid("field_id").notNull().references(() => fields.id, { onDelete: "cascade" }), sourceRecordId: uuid("source_record_id").notNull().references(() => records.id, { onDelete: "cascade" }), targetRecordId: uuid("target_record_id").notNull().references(() => records.id, { onDelete: "cascade" }), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, (table) => [uniqueIndex("record_relations_unique_idx").on(table.fieldId, table.sourceRecordId, table.targetRecordId)]);
+}, (table) => [
+  uniqueIndex("record_relations_unique_idx").on(table.fieldId, table.sourceRecordId, table.targetRecordId),
+  index("record_relations_source_idx").on(table.sourceRecordId),
+  index("record_relations_target_idx").on(table.targetRecordId),
+]);
 export const documents = pgTable("documents", {
   id: uuid("id").defaultRandom().primaryKey(), workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }), originalFilename: text("original_filename").notNull(), blobPathname: text("blob_pathname").notNull(), mimeType: text("mime_type").notNull(), sizeBytes: integer("size_bytes").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

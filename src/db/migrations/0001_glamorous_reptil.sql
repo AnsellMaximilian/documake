@@ -1,0 +1,2 @@
+CREATE INDEX "record_relations_source_idx" ON "record_relations" USING btree ("source_record_id");--> statement-breakpoint
+CREATE INDEX "record_relations_target_idx" ON "record_relations" USING btree ("target_record_id");

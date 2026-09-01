@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { collections, documents, fields, recordDocuments, recordRelations, records } from "@/db/schema";
 import { DomainError, type WorkspaceContext } from "@/lib/auth/workspace";
@@ -49,7 +49,27 @@ export async function updateCollection(ctx: WorkspaceContext, collectionId: stri
   await ownedCollection(ctx, collectionId); const input = collectionInput.partial().parse(raw);
   const [updated] = await ctx.db.update(collections).set({ ...input, updatedAt: new Date() }).where(eq(collections.id, collectionId)).returning(); return updated;
 }
-export async function deleteCollection(ctx: WorkspaceContext, collectionId: string) { await ownedCollection(ctx, collectionId); await ctx.db.delete(collections).where(eq(collections.id, collectionId)); }
+export async function deleteCollection(ctx: WorkspaceContext, collectionId: string) {
+  await ownedCollection(ctx, collectionId);
+  const inboundFields = await ctx.db
+    .select({ id: fields.id, key: fields.key, collectionId: fields.collectionId })
+    .from(fields)
+    .innerJoin(collections, eq(fields.collectionId, collections.id))
+    .where(and(
+      eq(collections.workspaceId, ctx.workspaceId),
+      ne(fields.collectionId, collectionId),
+      eq(fields.type, "relation"),
+      sql`${fields.config}->>'targetCollectionId' = ${collectionId}`,
+    ));
+
+  for (const field of inboundFields) {
+    await ctx.db.update(records).set({ values: sql<Record<string, unknown>>`${records.values} - ${field.key}`, updatedAt: new Date() }).where(eq(records.collectionId, field.collectionId));
+    await ctx.db.delete(fields).where(eq(fields.id, field.id));
+  }
+
+  await ctx.db.delete(collections).where(eq(collections.id, collectionId));
+  return { deleted: true, removedInboundRelationFields: inboundFields.length };
+}
 export async function getCollectionSchema(ctx: WorkspaceContext, collectionId: string) {
   const collection = await ownedCollection(ctx, collectionId); const schemaFields = await collectionFields(ctx, collectionId);
   const targetIds = schemaFields.filter((field) => field.type === "relation").map((field) => String(field.config.targetCollectionId ?? "")).filter(Boolean);
