@@ -22,7 +22,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className="h-full antialiased"
     >
       <body className="min-h-full bg-background text-foreground selection:bg-coral-soft selection:text-ink">
-        {clerkConfigured ? <ClerkProvider>{children}</ClerkProvider> : children}
+        {clerkConfigured ? (
+          <ClerkProvider
+            signInUrl="/sign-in"
+            signUpUrl="/sign-up"
+            signInFallbackRedirectUrl="/"
+            signUpFallbackRedirectUrl="/"
+          >
+            {children}
+          </ClerkProvider>
+        ) : children}
       </body>
     </html>
   );
