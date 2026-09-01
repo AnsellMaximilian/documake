@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, CircleCheck, FilePlus2, FileText, Layers3, Rows3, Sparkle } from "lucide-react";
 import { and, count, desc, eq } from "drizzle-orm";
+import { auth } from "@clerk/nextjs/server";
 import { AppShell } from "@/components/app-shell";
 import { BrandMark } from "@/components/brand-mark";
 import { BrandPattern } from "@/components/brand-pattern";
@@ -8,7 +9,9 @@ import { Card } from "@/components/ui/card";
 import { collections, documents, records } from "@/db/schema";
 import { requireWorkspace } from "@/lib/auth/workspace";
 import { listCollections, listDocuments } from "@/lib/domain/service";
+import { LandingPage } from "@/components/landing-page";
 
+const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
 const servicesReady = Boolean(process.env.DATABASE_URL && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
 export const dynamic = "force-dynamic";
 
@@ -34,6 +37,9 @@ function displayName(values: Record<string, unknown>) {
 }
 
 export default async function HomePage() {
+  if (!clerkConfigured) return <LandingPage authConfigured={false} />;
+  const { userId } = await auth();
+  if (!userId) return <LandingPage />;
   const home = await loadHome();
   const stats = [
     { label: "Collections", value: home.collections, icon: Layers3, hint: "Structures you have shaped" },

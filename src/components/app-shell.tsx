@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { FileCheck2 } from "lucide-react";
+import { auth } from "@clerk/nextjs/server";
 import { AppNavigation } from "@/components/app-navigation";
 import { AuthControls } from "@/components/auth-controls";
 import { BrandLockup } from "@/components/brand-mark";
 import { WebMcpTools } from "@/lib/webmcp/webmcp-tools";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export async function AppShell({ children }: { children: React.ReactNode }) {
   const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  if (clerkConfigured) await auth.protect({ unauthenticatedUrl: "/sign-in" });
   return <div className="min-h-screen lg:grid lg:grid-cols-[252px_1fr]">
     <WebMcpTools />
     <aside className="z-30 border-b bg-paper/95 px-4 py-3 backdrop-blur-xl lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:border-b-0 lg:border-r lg:px-5 lg:py-6">
