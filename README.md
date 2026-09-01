@@ -99,6 +99,14 @@ pnpm db:seed -- user_123
 
 This creates Suppliers and Invoices with fictional records, a relation field, confirmed and draft data, and IDR totals. The script refuses to overwrite collections with those slugs.
 
+For a richer, resumable analytics dataset, run:
+
+```bash
+pnpm db:seed:analytics
+```
+
+This creates clearly labeled Demo Suppliers, Demo Purchases, and Demo Purchase Items across July–September 2026. It includes relation-aware dates and statuses, 33 line items, and deterministic totals for testing grouped analytics and WebMCP.
+
 ## WebMCP
 
 WebMCP is experimental and its browser support and API may change. Documake feature-detects it:
@@ -145,6 +153,7 @@ Do not make the Blob store public and do not add model API credentials; they are
 | `pnpm db:migrate` | Apply migrations |
 | `pnpm db:studio` | Open Drizzle Studio |
 | `pnpm db:seed -- <clerk-user-id>` | Add fictional demo data |
+| `pnpm db:seed:analytics` | Add or resume the fictional supplier-purchase analytics dataset |
 
 ## Deliberate exclusions
 
