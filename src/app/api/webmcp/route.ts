@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { api, json } from "@/lib/http";
-import { addField, aggregateRecords, confirmRecord, createCollection, createRecord, getCollectionSchema, getDocument, getRecord, listCollections, listDocuments, searchRecords, updateRecord } from "@/lib/domain/service";
+import { addField, aggregateRecords, analyzeRecords, confirmRecord, createCollection, createRecord, getCollectionSchema, getDocument, getRecord, listCollections, listDocuments, searchRecords, updateRecord } from "@/lib/domain/service";
 
-const requestSchema = z.object({ action: z.enum(["list_collections", "get_collection_schema", "create_collection", "add_field", "search_records", "get_record", "create_record_draft", "update_record_draft", "confirm_record", "aggregate_records", "list_documents", "get_document"]), input: z.record(z.string(), z.unknown()).default({}) });
+const requestSchema = z.object({ action: z.enum(["list_collections", "get_collection_schema", "create_collection", "add_field", "search_records", "get_record", "create_record_draft", "update_record_draft", "confirm_record", "aggregate_records", "analyze_records", "list_documents", "get_document"]), input: z.record(z.string(), z.unknown()).default({}) });
 export async function POST(request: Request) {
   return api(async (ctx) => {
     const body = requestSchema.parse(await json(request));
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
       case "update_record_draft": return updateRecord(ctx, String(input.recordId), input);
       case "confirm_record": return confirmRecord(ctx, String(input.recordId));
       case "aggregate_records": return aggregateRecords(ctx, input);
+      case "analyze_records": return analyzeRecords(ctx, input);
       case "list_documents": return listDocuments(ctx, input);
       case "get_document": { const document = await getDocument(ctx, String(input.documentId)); return { id: document.id, originalFilename: document.originalFilename, mimeType: document.mimeType, sizeBytes: document.sizeBytes, createdAt: document.createdAt, viewPath: `/documents/${document.id}` }; }
     }

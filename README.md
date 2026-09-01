@@ -25,7 +25,7 @@ WebMCP is isolated in `src/lib/webmcp`. Client-side callbacks use the current ex
 - Draft and confirmed records, explicit record relations, filtering, and server-side aggregation
 - Private JPEG, PNG, WebP, and PDF upload with authenticated in-app previews and permanent record provenance
 - Starter collection templates plus an optional fictional Suppliers/Invoices seed
-- WebMCP tools for schema design, record lookup/drafts/confirmation, documents, and aggregation
+- WebMCP tools for schema design, record lookup/drafts/confirmation, documents, aggregation, and grouped analytics
 - Workspace membership checks on every server operation
 
 ## Requirements
@@ -118,6 +118,7 @@ To test:
 3. Ask the agent to list collections or inspect a document page. It should discover the registered tools.
 4. Try a draft workflow: upload a source, ask the agent to inspect it visually, call `get_collection_schema`, create a draft with `create_record_draft`, review the result, then call `confirm_record`.
 5. Ask for a total and verify the agent calls `aggregate_records` rather than calculating from page context.
+6. Ask for a grouped result such as “Which products had the highest line total this month?” and verify it calls `analyze_records`, optionally filtering through a related record’s date field.
 
 Read-only tools declare `readOnlyHint`. Tool responses are compact JSON and include follow-up IDs. Document and record text is treated as untrusted data. A mutation dispatches a small browser event and calls `router.refresh()` so visible views can refetch without realtime infrastructure.
 

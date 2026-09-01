@@ -1,6 +1,8 @@
 const object = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
 const id = { type: "string", format: "uuid" };
 const filters = { type: "array", maxItems: 10, items: object({ fieldKey: { type: "string" }, operator: { type: "string", enum: ["equals", "notEquals", "contains", "isEmpty"] }, value: {} }, ["fieldKey", "operator"]) };
+const analyticsField = object({ fieldKey: { type: "string" }, relatedFieldKey: { type: "string" } }, ["fieldKey"]);
+const analyticsFilters = { type: "array", maxItems: 8, items: object({ fieldKey: { type: "string" }, relatedFieldKey: { type: "string" }, operator: { type: "string", enum: ["equals", "notEquals", "contains", "isEmpty", "isNotEmpty", "gt", "gte", "lt", "lte", "between"] }, value: {}, valueTo: {} }, ["fieldKey", "operator"]) };
 
 export const toolDefinitions = [
   { name: "list_collections", description: "List collections in the authenticated workspace with record counts.", inputSchema: object({}), readOnly: true },
@@ -13,6 +15,7 @@ export const toolDefinitions = [
   { name: "update_record_draft", description: "Merge values into an existing draft record. Confirmed records are rejected.", inputSchema: object({ recordId: id, values: { type: "object" }, sourceDocumentIds: { type: "array", maxItems: 20, items: id } }, ["recordId", "values"]) },
   { name: "confirm_record", description: "Validate all required values and change an authorized draft record to confirmed.", inputSchema: object({ recordId: id }, ["recordId"]) },
   { name: "aggregate_records", description: "Compute a server-side count, sum, average, minimum, or maximum over confirmed records.", inputSchema: object({ collectionId: id, operation: { type: "string", enum: ["count", "sum", "average", "min", "max"] }, fieldKey: { type: "string" }, filters }, ["collectionId", "operation"]), readOnly: true },
+  { name: "analyze_records", description: "Group records and compute a server-side metric with structured filters. A filter or group can traverse one relation by providing relatedFieldKey.", inputSchema: object({ collectionId: id, operation: { type: "string", enum: ["count", "sum", "average", "min", "max"] }, valueFieldKey: { type: "string" }, groupBy: analyticsField, dateBucket: { type: "string", enum: ["day", "week", "month", "quarter", "year"] }, filters: analyticsFilters, status: { type: "string", enum: ["confirmed", "draft", "all"] }, sort: { type: "string", enum: ["asc", "desc"] }, limit: { type: "integer", minimum: 1, maximum: 50 } }, ["collectionId", "operation"]), readOnly: true },
   { name: "list_documents", description: "List safe source-document metadata in the authenticated workspace.", inputSchema: object({ limit: { type: "integer", minimum: 1, maximum: 100 }, unlinkedOnly: { type: "boolean" } }), readOnly: true },
   { name: "get_document", description: "Get safe document metadata and the in-app page path where the source can be visually inspected.", inputSchema: object({ documentId: id }, ["documentId"]), readOnly: true },
 ] as const;

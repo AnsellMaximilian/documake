@@ -16,7 +16,7 @@ export function WebMcpTools() {
         name: definition.name,
         description: definition.description,
         inputSchema: definition.inputSchema,
-        annotations: { readOnlyHint: "readOnly" in definition && definition.readOnly === true, untrustedContentHint: ["search_records", "get_record", "list_documents", "get_document"].includes(definition.name) },
+        annotations: { readOnlyHint: "readOnly" in definition && definition.readOnly === true, untrustedContentHint: ["search_records", "get_record", "analyze_records", "list_documents", "get_document"].includes(definition.name) },
         async execute(input) {
           const result = await clientApi("/api/webmcp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: definition.name, input }) });
           if (mutationNames.has(definition.name)) { router.refresh(); window.dispatchEvent(new Event("documake:data-changed")); }

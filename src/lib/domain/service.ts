@@ -5,6 +5,7 @@ import { DomainError, type WorkspaceContext } from "@/lib/auth/workspace";
 import { fieldConfigSchema, fieldTypes, filterSchema, validateRecordValues, type FieldMetadata } from "@/lib/validation/records";
 import { computeAggregation } from "@/lib/aggregation/compute";
 import { summarizeRelatedRecords } from "@/lib/aggregation/related";
+import { computeGroupedAnalytics, type AnalyticsFieldRef, type AnalyticsFilter } from "@/lib/analytics/compute";
 
 const collectionInput = z.object({ name: z.string().trim().min(1).max(80), description: z.string().trim().max(500).optional().nullable() });
 const addFieldInput = z.object({ collectionId: z.string().uuid(), key: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).max(64), label: z.string().trim().min(1).max(80), type: z.enum(fieldTypes), required: z.boolean().default(false), config: z.record(z.string(), z.unknown()).optional().default({}) });
@@ -180,6 +181,97 @@ export async function aggregateRecords(ctx: WorkspaceContext, raw: unknown) {
   const field = schemaFields.find((item) => item.key === input.fieldKey); if (!field || !["number", "money"].includes(field.type)) throw new DomainError("Aggregation requires a numeric or money field.", 422, "INCOMPATIBLE_FIELD");
   const values = rows.map((row) => row.values[field.key]).filter((value): value is number => typeof value === "number" && Number.isFinite(value)); const value = computeAggregation(input.operation, values);
   return { operation: input.operation, fieldKey: field.key, value, recordCount: rows.length, valueCount: values.length };
+}
+
+const analyticsFieldRefInput = z.object({ fieldKey: z.string().min(1).max(64), relatedFieldKey: z.string().min(1).max(64).optional() });
+const analyticsFilterInput = analyticsFieldRefInput.extend({
+  operator: z.enum(["equals", "notEquals", "contains", "isEmpty", "isNotEmpty", "gt", "gte", "lt", "lte", "between"]),
+  value: z.unknown().optional(),
+  valueTo: z.unknown().optional(),
+});
+
+export async function analyzeRecords(ctx: WorkspaceContext, raw: unknown) {
+  const input = z.object({
+    collectionId: z.string().uuid(),
+    operation: z.enum(["count", "sum", "average", "min", "max"]),
+    valueFieldKey: z.string().min(1).max(64).optional(),
+    groupBy: analyticsFieldRefInput.optional(),
+    dateBucket: z.enum(["day", "week", "month", "quarter", "year"]).optional().default("month"),
+    filters: z.array(analyticsFilterInput).max(8).optional().default([]),
+    status: z.enum(["confirmed", "draft", "all"]).optional().default("confirmed"),
+    sort: z.enum(["asc", "desc"]).optional().default("desc"),
+    limit: z.number().int().min(1).max(50).optional().default(20),
+  }).parse(raw);
+  const schemaFields = await collectionFields(ctx, input.collectionId);
+  const byKey = new Map(schemaFields.map((field) => [field.key, field]));
+  const rawRefs = [input.groupBy, ...input.filters].filter((ref): ref is z.infer<typeof analyticsFieldRefInput> => Boolean(ref));
+  const targetCollectionIds = [...new Set(rawRefs.flatMap((ref) => {
+    const field = byKey.get(ref.fieldKey);
+    return field?.type === "relation" ? [String(field.config.targetCollectionId)] : [];
+  }).filter(Boolean))];
+  const targetFields = targetCollectionIds.length ? await ctx.db
+    .select({ field: fields })
+    .from(fields)
+    .innerJoin(collections, eq(fields.collectionId, collections.id))
+    .where(and(eq(collections.workspaceId, ctx.workspaceId), inArray(fields.collectionId, targetCollectionIds)))
+    .orderBy(asc(fields.position)) : [];
+
+  function resolveRef(ref: z.infer<typeof analyticsFieldRefInput>): AnalyticsFieldRef {
+    const field = byKey.get(ref.fieldKey);
+    if (!field) throw new DomainError(`Field “${ref.fieldKey}” does not exist.`, 422, "INCOMPATIBLE_FIELD");
+    if (!ref.relatedFieldKey) return { fieldKey: field.key, type: field.type };
+    if (field.type !== "relation") throw new DomainError(`Field “${field.label}” is not a relation.`, 422, "INCOMPATIBLE_FIELD");
+    const related = targetFields.find((row) => row.field.collectionId === field.config.targetCollectionId && row.field.key === ref.relatedFieldKey)?.field;
+    if (!related) throw new DomainError(`Related field “${ref.relatedFieldKey}” does not exist.`, 422, "INCOMPATIBLE_FIELD");
+    if (related.type === "relation") throw new DomainError("Analytics supports one relation hop at a time.", 422, "INCOMPATIBLE_FIELD");
+    return { fieldKey: field.key, relatedFieldKey: related.key, type: related.type };
+  }
+
+  const groupBy = input.groupBy ? resolveRef(input.groupBy) : undefined;
+  const filters: AnalyticsFilter[] = input.filters.map((filter) => ({ ...resolveRef(filter), operator: filter.operator, value: filter.value, valueTo: filter.valueTo }));
+  for (const filter of filters) {
+    if (["gt", "gte", "lt", "lte", "between"].includes(filter.operator) && !["number", "money", "date"].includes(filter.type)) throw new DomainError("Comparison filters require a number, money, or date field.", 422, "INCOMPATIBLE_FIELD");
+    if (filter.operator === "contains" && !["text", "select"].includes(filter.type)) throw new DomainError("Contains filters require a text or select field.", 422, "INCOMPATIBLE_FIELD");
+  }
+  if (input.operation !== "count") {
+    const valueField = input.valueFieldKey ? byKey.get(input.valueFieldKey) : undefined;
+    if (!valueField || !["number", "money"].includes(valueField.type)) throw new DomainError("This metric requires a numeric or money field.", 422, "INCOMPATIBLE_FIELD");
+  }
+
+  const relationCollectionIds = [...new Set(schemaFields.filter((field) => field.type === "relation").map((field) => String(field.config.targetCollectionId)).filter(Boolean))];
+  const targetRecords = relationCollectionIds.length ? await ctx.db
+    .select({ id: records.id, collectionId: records.collectionId, values: records.values })
+    .from(records)
+    .innerJoin(collections, eq(records.collectionId, collections.id))
+    .where(and(eq(collections.workspaceId, ctx.workspaceId), inArray(records.collectionId, relationCollectionIds))) : [];
+  const targetsById = new Map(targetRecords.map((record) => [record.id, record]));
+  const rows = await ctx.db.select({ values: records.values, status: records.status }).from(records).where(eq(records.collectionId, input.collectionId));
+
+  const result = computeGroupedAnalytics(rows, { ...input, groupBy, filters }, (record, ref) => {
+    if (!ref.relatedFieldKey) return record.values[ref.fieldKey];
+    const targetId = record.values[ref.fieldKey];
+    return typeof targetId === "string" ? targetsById.get(targetId)?.values[ref.relatedFieldKey] : undefined;
+  }, (value, ref, bucketKey) => {
+    if (bucketKey) {
+      if (/^\d{4}-\d{2}$/.test(bucketKey)) return new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${bucketKey}-01T00:00:00Z`));
+      if (/^\d{4}-Q\d$/.test(bucketKey)) return `${bucketKey.slice(-2)} ${bucketKey.slice(0, 4)}`;
+      if (/^\d{4}-W\d{2}$/.test(bucketKey)) return `Week ${Number(bucketKey.slice(-2))}, ${bucketKey.slice(0, 4)}`;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(bucketKey)) return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${bucketKey}T00:00:00Z`));
+      return bucketKey;
+    }
+    if (value === undefined || value === null || value === "") return "No value";
+    const baseField = byKey.get(ref.fieldKey);
+    if (!ref.relatedFieldKey && baseField?.type === "relation" && typeof value === "string") {
+      const target = targetsById.get(value);
+      if (!target) return "Missing record";
+      const labelField = targetFields.find((row) => row.field.collectionId === target.collectionId && ["text", "select"].includes(row.field.type))?.field;
+      return String((labelField && target.values[labelField.key]) ?? Object.values(target.values).find((item) => typeof item === "string") ?? target.id);
+    }
+    if (ref.type === "boolean") return value ? "Yes" : "No";
+    return String(value);
+  });
+  const valueField = input.valueFieldKey ? byKey.get(input.valueFieldKey) : undefined;
+  return { ...result, operation: input.operation, valueFieldKey: input.valueFieldKey, valueFieldType: valueField?.type ?? null, currency: valueField?.type === "money" ? String(valueField.config.currency ?? "USD") : null, groupBy, dateBucket: input.dateBucket };
 }
 
 export async function listDocuments(ctx: WorkspaceContext, raw: unknown = {}) {
