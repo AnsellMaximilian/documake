@@ -2,11 +2,9 @@ import Link from "next/link";
 import { ArrowRight, BarChart3, Check, FileImage, Link2, Rows3, ShieldCheck, Sparkles } from "lucide-react";
 import { BrandLockup, BrandMark } from "@/components/brand-mark";
 import { BrandPattern } from "@/components/brand-pattern";
-import { GuestSessionReconciler } from "@/components/guest-session-reconciler";
 
 export function LandingPage({ authConfigured = true }: { authConfigured?: boolean }) {
   return <div className="min-h-screen overflow-hidden bg-background text-foreground">
-    {authConfigured ? <GuestSessionReconciler /> : null}
     <header className="relative z-20 border-b border-ink/10 bg-background/85 backdrop-blur-xl">
       <div className="mx-auto flex h-20 max-w-7xl items-center justify-between gap-5 px-5 sm:px-8 lg:px-10">
         <Link href="/" aria-label="Documake home" className="rounded-xl"><BrandLockup /></Link>
