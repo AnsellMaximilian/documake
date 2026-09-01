@@ -13,7 +13,7 @@ export function AuthControls() {
     return (
       <div className="flex items-center gap-3 px-2">
         <UserButton />
-        <span className="text-xs font-medium text-muted">Workspace account</span>
+        <span className="text-xs font-semibold text-muted">Your workspace</span>
       </div>
     );
   }

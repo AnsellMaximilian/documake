@@ -1,38 +1,97 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f7f4;
-  --foreground: #18201d;
-  --surface: #ffffff;
-  --surface-muted: #f1f3ef;
-  --border: #dfe4dc;
-  --muted: #66716b;
-  --accent: #246b55;
-  --accent-strong: #175340;
-  --accent-soft: #e3f1eb;
-  --warning: #99610c;
+  --background: #f7f3ea;
+  --foreground: #252238;
+  --ink: #282451;
+  --ink-soft: #3b356b;
+  --surface: #fffdf9;
+  --surface-muted: #f1ece2;
+  --paper: #eee7da;
+  --border: #ded5c6;
+  --muted: #746f7c;
+  --accent: #f26748;
+  --accent-strong: #d84d31;
+  --accent-soft: #ffe1d6;
+  --coral: #f26748;
+  --coral-strong: #d84d31;
+  --coral-soft: #ffe1d6;
+  --warning: #9b620d;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-paper: var(--paper);
   --color-border: var(--border);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
   --color-accent-strong: var(--accent-strong);
   --color-accent-soft: var(--accent-soft);
+  --color-coral: var(--coral);
+  --color-coral-strong: var(--coral-strong);
+  --color-coral-soft: var(--coral-soft);
   --color-warning: var(--warning);
-  --font-sans: "Segoe UI", Inter, Arial, sans-serif;
+  --font-sans: "Segoe UI Variable", "Aptos", "Segoe UI", sans-serif;
   --font-mono: "Cascadia Code", Consolas, monospace;
 }
 
+html { background: var(--background); }
+
 body {
-  background: var(--background);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 88% 2%, rgb(242 103 72 / 8%), transparent 26rem),
+    radial-gradient(circle at 18% 90%, rgb(40 36 81 / 5%), transparent 30rem),
+    var(--background);
   color: var(--foreground);
-  font-family: "Segoe UI", Inter, Arial, Helvetica, sans-serif;
+  font-family: "Segoe UI Variable", "Aptos", "Segoe UI", Arial, sans-serif;
+  text-rendering: optimizeLegibility;
 }
 
 * { border-color: var(--border); }
-button, a, input, select, textarea { outline-color: var(--accent); }
+::selection { background: var(--coral-soft); color: var(--ink); }
+button, a, input, select, textarea { outline-color: var(--coral); }
+input, select, textarea { transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease; }
+input:focus, select:focus, textarea:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgb(242 103 72 / 13%); }
+
+.paper-grid {
+  background-image:
+    linear-gradient(rgb(40 36 81 / 5%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(40 36 81 / 5%) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.animate-rise { animation: rise-in 440ms cubic-bezier(.22, .8, .3, 1) both; }
+.animate-drift { animation: drift 6s ease-in-out infinite; }
+.stagger-children > * { animation: rise-in 440ms cubic-bezier(.22, .8, .3, 1) both; }
+.stagger-children > *:nth-child(2) { animation-delay: 60ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 120ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 180ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 240ms; }
+
+.hover-lift { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
+.hover-lift:hover { transform: translateY(-2px); border-color: rgb(242 103 72 / 45%); box-shadow: 0 16px 35px rgb(40 36 81 / 10%); }
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes drift {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
