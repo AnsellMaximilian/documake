@@ -6,6 +6,7 @@ import { fieldConfigSchema, fieldTypes, filterSchema, validateRecordValues, type
 import { computeAggregation } from "@/lib/aggregation/compute";
 import { summarizeRelatedRecords } from "@/lib/aggregation/related";
 import { computeGroupedAnalytics, type AnalyticsFieldRef, type AnalyticsFilter } from "@/lib/analytics/compute";
+import { parseCollectionBlueprint, planCollectionBlueprint } from "@/lib/collections/blueprints";
 
 const collectionInput = z.object({ name: z.string().trim().min(1).max(80), description: z.string().trim().max(500).optional().nullable() });
 const addFieldInput = z.object({ collectionId: z.string().uuid(), key: z.string().trim().regex(/^[a-z][a-z0-9_]*$/).max(64), label: z.string().trim().min(1).max(80), type: z.enum(fieldTypes), required: z.boolean().default(false), config: z.record(z.string(), z.unknown()).optional().default({}) });
@@ -45,6 +46,22 @@ export async function createCollection(ctx: WorkspaceContext, raw: unknown) {
   while ((await ctx.db.select({ id: collections.id }).from(collections).where(and(eq(collections.workspaceId, ctx.workspaceId), eq(collections.slug, slug))).limit(1)).length) slug = `${slugify(input.name)}-${suffix++}`;
   const [created] = await ctx.db.insert(collections).values({ workspaceId: ctx.workspaceId, name: input.name, slug, description: input.description || null }).returning();
   return created;
+}
+export async function createCollectionBlueprint(ctx: WorkspaceContext, raw: unknown) {
+  const input = parseCollectionBlueprint(raw);
+  const existing = await ctx.db.select({ slug: collections.slug }).from(collections).where(eq(collections.workspaceId, ctx.workspaceId));
+  const plan = planCollectionBlueprint(input, ctx.workspaceId, existing.map((item) => item.slug));
+  const collectionRows: (typeof collections.$inferInsert)[] = plan.collections.map(({ id, workspaceId, name, slug, description }) => ({ id, workspaceId, name, slug, description }));
+  const fieldRows: (typeof fields.$inferInsert)[] = plan.fields;
+
+  if (fieldRows.length) await ctx.db.batch([ctx.db.insert(collections).values(collectionRows), ctx.db.insert(fields).values(fieldRows)]);
+  else await ctx.db.insert(collections).values(collectionRows);
+
+  const root = plan.collections.find((collection) => collection.id === plan.rootId)!;
+  return {
+    root: { id: root.id, name: root.name, slug: root.slug },
+    collections: plan.collections.map(({ id, parentId, name, slug }) => ({ id, parentId, name, slug })),
+  };
 }
 export async function updateCollection(ctx: WorkspaceContext, collectionId: string, raw: unknown) {
   await ownedCollection(ctx, collectionId); const input = collectionInput.partial().parse(raw);

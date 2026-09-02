@@ -24,7 +24,7 @@ WebMCP is isolated in `src/lib/webmcp`. Client-side callbacks use the current ex
 - Generic JSONB record values validated against relational field metadata
 - Draft and confirmed records, explicit record relations, filtering, and server-side aggregation
 - Private JPEG, PNG, WebP, and PDF upload with authenticated in-app previews and permanent record provenance
-- Starter collection templates plus an optional fictional Suppliers/Invoices seed
+- Reviewable collection-family templates that create nested child collections and parent relations in one operation
 - WebMCP tools for schema design, record lookup/drafts/confirmation, documents, aggregation, and grouped analytics
 - Workspace membership checks on every server operation
 
