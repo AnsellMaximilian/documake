@@ -4,7 +4,7 @@ import { collections, documents, fields, recordDocuments, recordRelations, recor
 import { DomainError, type WorkspaceContext } from "@/lib/auth/workspace";
 import { fieldConfigSchema, fieldTypes, filterSchema, validateRecordValues, type FieldMetadata } from "@/lib/validation/records";
 import { computeAggregation } from "@/lib/aggregation/compute";
-import { summarizeRelatedRecords } from "@/lib/aggregation/related";
+import { buildIncomingRelationGroups } from "@/lib/aggregation/related";
 import { computeGroupedAnalytics, type AnalyticsFieldRef, type AnalyticsFilter } from "@/lib/analytics/compute";
 import { parseCollectionBlueprint, planCollectionBlueprint } from "@/lib/collections/blueprints";
 
@@ -162,32 +162,29 @@ export async function getRecord(ctx: WorkspaceContext, recordId: string) {
   const { record, collection } = await ownedRecord(ctx, recordId); const schemaFields = await collectionFields(ctx, record.collectionId);
   const links = await ctx.db.select({ fieldId: recordRelations.fieldId, targetRecordId: recordRelations.targetRecordId }).from(recordRelations).where(eq(recordRelations.sourceRecordId, recordId));
   const targetRows = links.length ? await ctx.db.select().from(records).where(inArray(records.id, links.map((link) => link.targetRecordId))) : [];
+  const incomingDefinitions = await ctx.db
+    .select({ field: fields, collection: collections })
+    .from(fields)
+    .innerJoin(collections, eq(fields.collectionId, collections.id))
+    .where(and(
+      eq(collections.workspaceId, ctx.workspaceId),
+      eq(fields.type, "relation"),
+      sql`${fields.config}->>'targetCollectionId' = ${record.collectionId}`,
+    ))
+    .orderBy(asc(collections.name), asc(fields.position));
   const incomingRows = await ctx.db
-    .select({ field: fields, record: records, collection: collections })
+    .select({ fieldId: recordRelations.fieldId, record: records })
     .from(recordRelations)
-    .innerJoin(fields, eq(recordRelations.fieldId, fields.id))
     .innerJoin(records, eq(recordRelations.sourceRecordId, records.id))
     .innerJoin(collections, eq(records.collectionId, collections.id))
     .where(and(eq(recordRelations.targetRecordId, recordId), eq(collections.workspaceId, ctx.workspaceId)))
     .orderBy(asc(collections.name), desc(records.updatedAt))
     .limit(200);
-  const incomingCollectionIds = [...new Set(incomingRows.map((row) => row.collection.id))];
+  const incomingCollectionIds = [...new Set(incomingDefinitions.map((row) => row.collection.id))];
   const incomingFields = incomingCollectionIds.length
     ? await ctx.db.select().from(fields).where(inArray(fields.collectionId, incomingCollectionIds)).orderBy(asc(fields.position))
     : [];
-  const incomingRelations = [...new Map(incomingRows.map((row) => [row.field.id, row])).values()].map((groupSeed) => {
-    const groupRecords = incomingRows.filter((row) => row.field.id === groupSeed.field.id).map((row) => row.record);
-    const groupFields = incomingFields.filter((field) => field.collectionId === groupSeed.collection.id);
-    return {
-      field: { id: groupSeed.field.id, key: groupSeed.field.key, label: groupSeed.field.label },
-      collection: { id: groupSeed.collection.id, name: groupSeed.collection.name },
-      fields: groupFields,
-      records: groupRecords,
-      totalCount: groupRecords.length,
-      confirmedCount: groupRecords.filter((item) => item.status === "confirmed").length,
-      summaries: summarizeRelatedRecords(groupFields, groupRecords),
-    };
-  });
+  const incomingRelations = buildIncomingRelationGroups(incomingDefinitions, incomingRows, incomingFields);
   const docs = await ctx.db.select({ id: documents.id, originalFilename: documents.originalFilename, mimeType: documents.mimeType, sizeBytes: documents.sizeBytes, createdAt: documents.createdAt }).from(recordDocuments).innerJoin(documents, eq(recordDocuments.documentId, documents.id)).where(eq(recordDocuments.recordId, recordId));
   return { ...record, collection: { id: collection.id, name: collection.name }, fields: schemaFields, relatedRecords: links.map((link) => ({ fieldId: link.fieldId, record: targetRows.find((target) => target.id === link.targetRecordId) })), incomingRelations, documents: docs };
 }
