@@ -2,19 +2,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Check, ChevronRight, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronRight, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { clientApi } from "@/lib/client-api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CollectionAnalytics } from "@/components/collection-analytics";
 import { CollectionRelationsMap } from "@/components/collection-relations-map";
+import { SourceDocumentPicker, type SourceDocumentOption } from "@/components/source-document-picker";
 
 type FieldType = "text" | "number" | "money" | "date" | "boolean" | "select" | "relation";
 type Field = { id: string; key: string; label: string; type: FieldType; required: boolean; position: number; config: Record<string, unknown>; relationTarget?: { id: string; name: string } | null };
 type Schema = { id: string; name: string; description: string | null; fields: Field[] };
 type RecordRow = { id: string; values: Record<string, unknown>; status: "draft" | "confirmed"; updatedAt: string };
 type Collection = { id: string; name: string; description?: string | null };
-type Document = { id: string; originalFilename: string; linkCount: number };
+type Document = SourceDocumentOption;
 type WorkspaceTab = "records" | "analyze" | "relations" | "schema";
 
 const workspaceTabs: { id: WorkspaceTab; label: string }[] = [
@@ -101,9 +102,10 @@ export function CollectionWorkspace({ collectionId, initialValues = {}, returnRe
       {tab === "records" && <Button size="sm" onClick={() => setShowRecordForm(!showRecordForm)} className="shrink-0 self-start sm:self-auto"><Plus className="size-4" />{showRecordForm ? "Close form" : "New record"}</Button>}
     </div>
     {tab === "records" ? <div className="mt-5 space-y-5">
+      {!schema.fields.length && <div role="status" className="flex flex-col gap-4 rounded-2xl border border-amber-300/70 bg-amber-50 px-5 py-4 text-amber-950 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-700"><AlertTriangle className="size-5" /></span><div><p className="text-sm font-bold">This collection has no fields yet</p><p className="mt-1 max-w-2xl text-xs leading-5 text-amber-800">You can still create a source-only record, but it will not contain structured values until fields are added. Existing records can be filled in later.</p></div></div><Button type="button" size="sm" variant="secondary" onClick={() => setTab("schema")} className="shrink-0 self-start sm:self-auto"><Settings2 className="size-4" />Open schema</Button></div>}
       {showRecordForm && <Card className="p-5">{returnRecordId && <div className="mb-4 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent-strong">Creating a related {schema.name} record. The relation is already selected.</div>}<form onSubmit={createRecord}><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{schema.fields.map((field) => <FieldInput key={field.id} field={field} value={values[field.key]} related={relations[field.id] ?? []} onChange={(value) => setValues((current) => ({ ...current, [field.key]: value }))} />)}</div>
-        {documents.length > 0 && <label className="mt-4 block text-sm font-medium">Source documents<select multiple value={sourceDocumentIds} onChange={(e) => setSourceDocumentIds(Array.from(e.target.selectedOptions, (option) => option.value))} className="mt-1.5 min-h-24 w-full rounded-lg border bg-white p-2 font-normal sm:max-w-lg">{documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.originalFilename}</option>)}</select><span className="mt-1 block text-xs font-normal text-muted">Hold Ctrl/Cmd to choose more than one.</span></label>}
-        <div className="mt-5 flex flex-wrap items-center gap-3"><Button disabled={busy}><Check className="size-4" />Save record</Button><label className="flex items-center gap-2 text-sm text-muted"><input type="checkbox" checked={draft} onChange={(e) => setDraft(e.target.checked)} className="size-4 accent-[var(--accent)]" />Save as draft for review</label></div>
+        <SourceDocumentPicker documents={documents} selectedIds={sourceDocumentIds} onChange={setSourceDocumentIds} />
+        <div className="mt-5 flex flex-wrap items-center gap-3"><Button disabled={busy}><Check className="size-4" />{schema.fields.length ? "Save record" : "Save source-only record"}</Button><label className="flex items-center gap-2 text-sm text-muted"><input type="checkbox" checked={draft} onChange={(e) => setDraft(e.target.checked)} className="size-4 accent-[var(--accent)]" />Save as draft for review</label></div>
       </form></Card>}
       <div className="flex flex-wrap gap-3">{Object.entries(summaries).map(([key, summary]) => { const field = schema.fields.find((item) => item.key === key)!; return <Card key={key} className="min-w-48 p-4"><p className="text-xs font-medium text-muted">{field.label}</p><p className="mt-2 text-sm font-semibold">Sum {formatValue(field, summary.sum)}</p><p className="mt-1 text-xs text-muted">Average {formatValue(field, summary.average)}</p></Card>; })}</div>
       <Card className="overflow-hidden"><div className="flex items-center gap-2 border-b px-4 py-3"><Search className="size-4 text-muted" /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter records…" className="w-full bg-transparent text-sm outline-none" /></div><div className="overflow-x-auto"><table className="w-full min-w-2xl text-left text-sm"><thead className="bg-surface-muted text-xs text-muted"><tr>{schema.fields.map((field) => <th key={field.id} className="px-4 py-3 font-medium">{field.label}</th>)}<th className="px-4 py-3 font-medium">Status</th><th /></tr></thead><tbody className="divide-y">{visible.map((row) => <tr key={row.id} className="hover:bg-surface-muted/60">{schema.fields.map((field) => <td key={field.id} className="max-w-64 truncate px-4 py-3">{formatValue(field, row.values[field.key], relations[field.id] ?? [])}</td>)}<td className="px-4 py-3"><span className={`rounded-full px-2 py-1 text-xs font-medium ${row.status === "draft" ? "bg-amber-100 text-amber-800" : "bg-accent-soft text-accent-strong"}`}>{row.status}</span></td><td className="px-4 py-3"><Link href={`/records/${row.id}`} aria-label="Open record"><ChevronRight className="size-4 text-muted" /></Link></td></tr>)}</tbody></table>{!visible.length && <div className="grid min-h-44 place-items-center text-center text-sm text-muted">No matching records.</div>}</div></Card>
