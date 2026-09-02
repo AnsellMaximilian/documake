@@ -76,6 +76,8 @@ input:focus, select:focus, textarea:focus { border-color: var(--coral); box-shad
 
 .hover-lift { transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
 .hover-lift:hover { transform: translateY(-2px); border-color: rgb(242 103 72 / 45%); box-shadow: 0 16px 35px rgb(40 36 81 / 10%); }
+.relation-node-float { animation: relation-float 7s ease-in-out infinite; }
+.relation-line-drift { animation: relation-dash 16s linear infinite; }
 
 @keyframes rise-in {
   from { opacity: 0; transform: translateY(8px); }
@@ -85,6 +87,15 @@ input:focus, select:focus, textarea:focus { border-color: var(--coral); box-shad
 @keyframes drift {
   0%, 100% { transform: translateY(0) rotate(-1deg); }
   50% { transform: translateY(-7px) rotate(1deg); }
+}
+
+@keyframes relation-float {
+  0%, 100% { margin-top: 0; }
+  50% { margin-top: -8px; }
+}
+
+@keyframes relation-dash {
+  to { stroke-dashoffset: -56; }
 }
 
 @media (prefers-reduced-motion: reduce) {
