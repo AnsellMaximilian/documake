@@ -8,7 +8,6 @@ export const metadata: Metadata = {
   metadataBase: new URL(appUrl),
   title: { default: "Documake", template: "%s · Documake" },
   description: "Turn source evidence into structured, reviewable records.",
-  icons: { icon: "/brand/documake-mark.png", apple: "/brand/documake-mark.png" },
   openGraph: { title: "Documake", description: "Structured records. Source evidence.", images: [{ url: "/og.png", width: 1200, height: 630, alt: "Documake — Structured records. Source evidence." }] },
   twitter: { card: "summary_large_image", title: "Documake", description: "Structured records. Source evidence.", images: ["/og.png"] },
 };
