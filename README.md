@@ -58,11 +58,12 @@ WebMCP is isolated in `src/lib/webmcp`. Client-side callbacks use the current ex
    DATABASE_URL=postgresql://...
    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_...
    CLERK_SECRET_KEY=sk_...
+   # Optional locally when project-linked Vercel OIDC is unavailable:
    BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...
    NEXT_PUBLIC_APP_URL=http://localhost:3000
    ```
 
-   Vercel Blob can use project-linked OIDC authentication when the app runs through supported Vercel tooling. A Blob read/write token is the straightforward local-development fallback. The token stays server-side. Source previews are streamed through an authenticated application route; storage credentials and unrestricted private URLs are never returned to the browser agent.
+   Vercel Blob uses project-linked OIDC authentication when the app runs through supported Vercel tooling. The connection supplies `BLOB_STORE_ID`, and the Blob SDK obtains a short-lived OIDC credential automatically; application code does not pass a token. A Blob read/write token is the straightforward local-development fallback. The token stays server-side. Source previews are streamed through an authenticated application route; storage credentials and unrestricted private URLs are never returned to the browser agent.
 
 4. Apply the checked-in Drizzle migration:
 
@@ -134,7 +135,7 @@ Read-only tools declare `readOnlyHint`. Tool responses are compact JSON and incl
 
 1. Push the repository to a git host and import it into Vercel, or run `vercel link` in this directory.
 2. Add the Neon and Clerk variables in the Vercel project settings.
-3. Connect a **private** Vercel Blob store to the project. Use Vercel's linked OIDC setup where available, or configure `BLOB_READ_WRITE_TOKEN`.
+3. Connect a **private** Vercel Blob store to the project. The linked OIDC setup provides `BLOB_STORE_ID` and requires no manually copied token. For local development outside supported Vercel tooling, configure `BLOB_READ_WRITE_TOKEN` as a fallback.
 4. Set `NEXT_PUBLIC_APP_URL` to the trusted production origin and add that origin to Clerk's allowed URLs.
 5. Run the database migration against the production Neon branch, then deploy.
 
